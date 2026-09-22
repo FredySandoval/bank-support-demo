@@ -4,7 +4,15 @@ services:
     build: .
     container_name: bank-support-demo
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8081:8080"
     volumes:
       - ./data:/app/data
+    environment:
+      AdminPasswordFile: /run/secrets/admin_password
+    secrets:
+      - admin_password
     restart: unless-stopped
+
+secrets:
+  admin_password:
+    file: ./.secrets/admin_password

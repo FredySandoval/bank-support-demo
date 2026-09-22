@@ -9,12 +9,33 @@ Not a real banking system. Use only demo data and a trusted demo environment.
 Install Docker Engine and the Compose plugin, then from this directory:
 
 ```bash
-mkdir -p data
+mkdir -p data .secrets
+chmod 700 .secrets
+# First setup only; do not overwrite an existing password:
+(umask 077; set -C; openssl rand -base64 32 > .secrets/admin_password)
 docker compose up -d --build
 ```
 
-Open http://localhost:8080 (or http://SERVER_IP:8080).
-Login: **admin / Demo123!**. The seeded password is stored as a hash.
+The app listens at http://127.0.0.1:8081 on the Docker host only (container port
+8080). Port 8080 on this demo VM is already used by another app.
+
+For the host-level cloudflared service, configure the public hostname's HTTP
+service as `http://127.0.0.1:8081`. No inbound firewall ports are needed for the
+tunnel. Protect the hostname with **Cloudflare Access** before exposing this demo:
+this is a demo, not a hardened banking application. Tunnel routing is configured separately.
+If cloudflared runs in Docker instead, attach it to the same Docker network and
+use `http://bank-support-demo:8080`; loopback inside that container is not the host.
+Login username: **admin**. Read the password locally from `.secrets/admin_password`.
+This file is excluded from Git and Docker builds and mounted as a Compose secret.
+Never commit it. The database stores only a password hash.
+
+Startup requires `AdminPasswordFile` pointing to a file containing at least 16
+characters. It synchronizes the admin password on every startup, including existing
+databases, without resetting balances. To rotate it, replace the secret file and run
+`docker compose up -d --force-recreate`. Password changes alone do not revoke existing
+cookies; to revoke all sessions on future rotations, change the data-protection
+application name in `Program.cs` and rebuild. This deployment changes that scope to
+invalidate sessions from before the hardcoded credential was retired.
 
 ```bash
 docker compose logs -f
@@ -42,8 +63,10 @@ docker build -t bank-support-demo:latest .
 mkdir -p data
 docker run -d \
   --name bank-support-demo \
-  -p 8080:8080 \
+  -p 127.0.0.1:8081:8080 \
   -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/.secrets/admin_password:/run/secrets/admin_password:ro" \
+  -e AdminPasswordFile=/run/secrets/admin_password \
   --restart unless-stopped \
   bank-support-demo:latest
 ```
@@ -54,7 +77,7 @@ Install the .NET 10 SDK:
 
 ```bash
 dotnet restore
-dotnet run --urls http://localhost:8080
+AdminPasswordFile="$PWD/.secrets/admin_password" dotnet run --urls http://localhost:8080
 ```
 
 Local SQLite path is `data/bank.db`. Docker overrides the connection string with
@@ -92,7 +115,7 @@ Repeat attempts are separate transfers; this demo has no idempotency keys.
 
 ```bash
 docker logs -f bank-support-demo
-curl -i http://localhost:8080/health
+curl -i http://127.0.0.1:8081/health
 docker inspect bank-support-demo --format '{{.State.Status}}'
 ```
 
@@ -116,7 +139,7 @@ Money is stored as integer cents, not floating point. Transfers accept up to two
 decimal places and a maximum of 1,000,000,000; destination balances have the same limit.
 
 If startup fails, inspect logs and verify the data directory is writable and port
-8080 is free. An `overlay` module error from Docker is a host/kernel problem, not
+8081 is free. An `overlay` module error from Docker is a host/kernel problem, not
 an app error; after a kernel upgrade, reboot and restart Docker.
 
 ## Persistence and security boundaries
@@ -129,8 +152,10 @@ Back up the directory only while the app is stopped, or use SQLite's backup API.
 
 The demo container uses the image's default root user for straightforward bind-mount
 permissions. Data-protection keys are persisted without at-rest encryption; protect
-the host directory. HTTP and public demo credentials are deliberate demo limitations.
-Do not expose it to the public internet or put real financial information in it.
+the host directory. Origin HTTP is a deliberate demo limitation.
+Do not expose it without an access-control layer or put real financial information in it.
+With Cloudflare Tunnel, terminate public HTTPS at Cloudflare and restrict access
+using Cloudflare Access; keep the origin bound to loopback.
 Static assets are public; all business endpoints require cookies. MVC POSTs enforce
 antiforgery tokens. HTTPS termination and production hardening are out of scope.
 
@@ -151,15 +176,16 @@ The Docker image builds and runs on x86_64. Automated HTTP smoke tests cover log
 protected pages, CSRF, transfer validation, insufficient funds without balance
 changes, incidents, successful transfer, and logout. Database checks verified
 hashed passwords, completed records, restart persistence, and idempotent seeds.
-Linux ARM64 cross-publish succeeds with native SQLite included. Official .NET images
-support ARM64; native ARM64 Docker build/runtime validation must still be done on
-an ARM64 host.
+Linux ARM64 cross-publish succeeds with native SQLite included. Native ARM64 Docker build and runtime were also validated on the demo VM,
+including the full HTTP smoke test against a disposable database.
 
 Run the smoke test only with a **fresh disposable database** (it changes balances):
 
 ```bash
-docker run -d --name bank-support-test -p 127.0.0.1:18080:8080 bank-support-demo:latest
+docker run -d --name bank-support-test -p 127.0.0.1:18080:8080 \
+  -v "$PWD/.secrets/admin_password:/run/secrets/admin_password:ro" \
+  -e AdminPasswordFile=/run/secrets/admin_password bank-support-demo:latest
 # Wait for /health to return 200, then:
-python3 scripts/smoke-test.py http://localhost:18080
+AdminPasswordFile="$PWD/.secrets/admin_password" python3 scripts/smoke-test.py http://localhost:18080
 docker rm -f bank-support-test
 ```

@@ -32,7 +32,8 @@ builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("sqlite");
 Directory.CreateDirectory("data");
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo("data/keys"))
-    .SetApplicationName("BankSupportDemo");
+    // New protection scope invalidates cookies issued with the retired demo credential.
+    .SetApplicationName("BankSupportDemo.CredentialsV2");
 
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())

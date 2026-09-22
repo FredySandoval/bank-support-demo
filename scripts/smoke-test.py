@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """HTTP smoke test. Use ONLY against a disposable database: changes balances."""
 import http.cookiejar
+import os
+from pathlib import Path
 import re
 import sys
 import urllib.parse
@@ -8,6 +10,7 @@ import urllib.request
 import urllib.error
 
 base = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8080"
+password = Path(os.environ["AdminPasswordFile"]).read_text().rstrip("\r\n")
 client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
 
@@ -26,7 +29,7 @@ assert get("/health").status == 200
 for path in ["/accounts", "/transfers/new", "/incidents"]:
     assert "/login" in get(path).url
 assert "Invalid username or password" in post("/login", {"Username": "admin", "Password": "wrong"}).read().decode()
-assert post("/login", {"Username": "admin", "Password": "Demo123!"}).url.endswith("/accounts")
+assert post("/login", {"Username": "admin", "Password": password}).url.endswith("/accounts")
 accounts = get("/accounts").read().decode()
 def account_rows():
     return re.findall(r"<tr><td>.*?</tr>", get("/accounts").read().decode())

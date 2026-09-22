@@ -1,3 +1,6 @@
+.secrets/
+.env
+.env.*
 bin/
 obj/
 .git/

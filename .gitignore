@@ -1,0 +1,10 @@
+.secrets/
+.env
+.env.*
+bin/
+obj/
+.vscode/
+.idea/
+data/*
+!data/.gitkeep
+nowhere

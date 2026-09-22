@@ -1,0 +1,32 @@
+@model TransferForm
+@{ ViewData["Title"] = "Transfer"; }
+<h1>New transfer</h1>
+<form asp-controller="Transfers" asp-action="New" method="post" id="transfer-form" style="max-width: 500px">
+    <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+    <p id="transfer-error" class="text-danger" role="alert"></p>
+    <div class="mb-3">
+        <label asp-for="SourceAccountId" class="form-label">Source account</label>
+        <select asp-for="SourceAccountId" class="form-select" required>
+            <option value="">Choose an account</option>
+            @foreach (var account in Model.Accounts)
+            {
+                <option value="@account.Id">@account.Id - @account.Owner</option>
+            }
+        </select>
+    </div>
+    <div class="mb-3">
+        <label asp-for="DestinationAccountId" class="form-label">Destination account</label>
+        <select asp-for="DestinationAccountId" class="form-select" required>
+            <option value="">Choose an account</option>
+            @foreach (var account in Model.Accounts)
+            {
+                <option value="@account.Id">@account.Id - @account.Owner</option>
+            }
+        </select>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Amount" class="form-label"></label>
+        <input asp-for="Amount" type="number" class="form-control" min="0.01" max="1000000000" step="0.01" required />
+    </div>
+    <button class="btn btn-primary" type="submit">Transfer</button>
+</form>

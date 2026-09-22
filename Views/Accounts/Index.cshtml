@@ -1,0 +1,14 @@
+@model List<Account>
+@{ ViewData["Title"] = "Accounts"; }
+<h1>Accounts</h1>
+<div class="table-responsive">
+<table class="table">
+    <thead><tr><th>Account ID</th><th>Owner</th><th class="text-end">Balance</th></tr></thead>
+    <tbody>
+    @foreach (var account in Model)
+    {
+        <tr><td>@account.Id</td><td>@account.Owner</td><td class="text-end">@account.Balance.ToString("N2")</td></tr>
+    }
+    </tbody>
+</table>
+</div>

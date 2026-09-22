@@ -1,0 +1,15 @@
+@model LoginForm
+@{ ViewData["Title"] = "Login"; }
+<h1>Login</h1>
+<form asp-controller="Auth" asp-action="Login" method="post" style="max-width: 400px">
+    <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+    <div class="mb-3">
+        <label asp-for="Username" class="form-label"></label>
+        <input asp-for="Username" class="form-control" autocomplete="username" required />
+    </div>
+    <div class="mb-3">
+        <label asp-for="Password" class="form-label"></label>
+        <input asp-for="Password" class="form-control" autocomplete="current-password" required />
+    </div>
+    <button class="btn btn-primary" type="submit">Login</button>
+</form>

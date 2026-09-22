@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] - Bank Support Demo</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/bootstrap.min.css" />
+</head>
+<body>
+    <nav class="navbar navbar-expand bg-light border-bottom mb-4" aria-label="Main navigation">
+        <div class="container flex-wrap gap-3">
+            <a class="navbar-brand" href="/accounts">Bank Support Demo</a>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <div class="d-flex align-items-center flex-wrap gap-3">
+                    <a href="/accounts">Accounts</a>
+                    <a href="/transfers/new">Transfer</a>
+                    <a href="/incidents">Incidents</a>
+                    <form asp-controller="Auth" asp-action="Logout" method="post">
+                        <button class="btn btn-outline-secondary btn-sm" type="submit">Logout</button>
+                    </form>
+                </div>
+            }
+        </div>
+    </nav>
+    <main class="container pb-4">
+        @if (TempData["Success"] is string message)
+        {
+            <div class="alert alert-success" role="status">@message</div>
+        }
+        @RenderBody()
+    </main>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+</body>
+</html>

@@ -10,6 +10,8 @@ Uses only the Python standard library. Never submits logins or transfers.
 
 import argparse
 import os
+import shutil
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -21,6 +23,52 @@ RATE = 5
 DURATION = 30
 WORKERS = 5
 TIMEOUT = 3
+
+
+class Dashboard:
+    """ANSI dashboard in terminals; periodic plain snapshots when redirected."""
+
+    def __init__(self, duration, started):
+        self.duration = duration
+        self.started = started
+        self.terminal = sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
+        self.lines = 0
+        self.last_update = -float("inf")
+
+    def render(self, submitted, pending, results, phase="RUNNING", force=False):
+        now = time.monotonic()
+        interval = 0.1 if self.terminal else 2.0
+        if not force and now - self.last_update < interval:
+            return
+        self.last_update = now
+        elapsed = now - self.started
+        fraction = min(elapsed / self.duration, 1.0)
+        filled = int(fraction * 24)
+        bar = "#" * filled + "-" * (24 - filled)
+        counts = Counter(status for status, _ in results)
+        latencies = sorted(seconds * 1000 for _, seconds in results)
+        average = sum(latencies) / len(latencies) if latencies else 0
+        p95 = latencies[int((len(latencies) - 1) * 0.95)] if latencies else 0
+        codes = "  ".join(f"{code}: {count}" for code, count in counts.items()) or "waiting"
+        spinner = "|/-\\"[int(elapsed * 8) % 4] if phase == "RUNNING" else "*"
+        lines = [
+            f"{spinner} BOUNDED LOAD TEST | {phase}",
+            f"[{bar}] {elapsed:5.1f}s / {self.duration}s time budget",
+            f"Sent: {submitted:3} | Done: {len(results):3} | In flight: {pending}",
+            f"HTTP 200: {counts[200]:3} | Non-200/errors: {len(results) - counts[200]:3}",
+            f"Avg: {average:.0f} ms | P95: {p95:.0f} ms | Completed/s: {len(results) / max(elapsed, 0.001):.1f}",
+            f"Responses: {codes}",
+        ]
+        if self.terminal:
+            width = max(1, shutil.get_terminal_size((80, 24)).columns - 1)
+            if self.lines:
+                sys.stdout.write(f"\033[{self.lines}A")
+            for line in lines:
+                sys.stdout.write("\r\033[2K" + line[:width] + "\n")
+            sys.stdout.flush()
+            self.lines = len(lines)
+        else:
+            print(" | ".join(lines), flush=True)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -76,6 +124,8 @@ def main():
     print(f"Limits: {RATE} requests/sec, {duration} seconds, {WORKERS} concurrent")
     print("Read-only test. Monitor docker stats; press Ctrl+C to stop.", flush=True)
 
+    dashboard = Dashboard(duration, started)
+
     def collect(futures):
         for future in futures:
             results.append(future.result())
@@ -86,6 +136,7 @@ def main():
                 done = {future for future in pending if future.done()}
                 pending -= done
                 collect(done)
+                dashboard.render(submitted, len(pending), results)
 
                 failures = sum(status != 200 for status, _ in results)
                 slow = sum(seconds >= 2 for _, seconds in results)
@@ -104,7 +155,7 @@ def main():
                     collect(done)
                     continue
                 if now < next_request:
-                    time.sleep(min(next_request - now, deadline - now))
+                    time.sleep(min(0.1, next_request - now, deadline - now))
                     continue
 
                 pending.add(pool.submit(request, url, headers))
@@ -114,8 +165,13 @@ def main():
         except KeyboardInterrupt:
             reason = "Stopped by operator"
 
-        print(f"\n{reason}. Waiting for in-flight requests...", flush=True)
-        collect(pending)
+        dashboard.render(submitted, len(pending), results, "DRAINING", force=True)
+        while pending:
+            done, pending = wait(pending, timeout=0.1, return_when=FIRST_COMPLETED)
+            collect(done)
+            dashboard.render(submitted, len(pending), results, "DRAINING")
+        dashboard.render(submitted, 0, results, "FINISHED", force=True)
+        print(f"\n{reason}.", flush=True)
 
     elapsed = time.monotonic() - started
     latencies = sorted(seconds * 1000 for _, seconds in results)
